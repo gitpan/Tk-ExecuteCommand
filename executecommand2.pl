@@ -6,6 +6,7 @@ use strict;
 my $mw = MainWindow->new;
 
 my $ec = $mw->ExecuteCommand->pack;
+$ec->terse_gui;
 $ec->configure(-command => 'date; sleep 5; date');
 $ec->execute_command;
  

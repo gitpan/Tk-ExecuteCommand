@@ -1,4 +1,4 @@
-$Tk::ExecuteCommand::VERSION = '1.2';
+$Tk::ExecuteCommand::VERSION = '1.3';
 
 package Tk::ExecuteCommand;
 
@@ -26,8 +26,10 @@ sub Populate {
 
     $c->bind('<Return>' => [$doit => 'invoke']);
 
-    $self->Frame->pack(qw/pady 10/);
-    $self->Label(-text => 'Command\'s stdout and stderr')->pack;
+    my $s = $self->Frame->pack(qw/pady 10/);
+    $self->Advertise('spacer' => $s);
+    my $l = $self->Label(-text => 'Command\'s stdout and stderr')->pack;
+    $self->Advertise('label' => $l);
 
     my $text = $self->Scrolled('ROText');
     $text->pack(qw/-expand 1 -fill both/); 
@@ -200,6 +202,24 @@ sub kill_command {
 
 } # end kill_command
 
+sub terse_gui {
+
+    # Remove all but ROText widget. Currently, cannot be reversed.
+
+    my ($self) =@_;
+
+    my $n = 0;
+    foreach ($self->children) {
+	if (ref($_) eq 'Tk::Frame') {
+	    $n++;
+	    $_->packForget if $n <= 2;
+	} elsif (ref($_) eq 'Tk::Label') {
+	    $_->packForget;
+	}
+    }
+
+} # end terse_gui
+
 1;
 
 __END__
@@ -276,6 +296,11 @@ Returns a 2 element array of $? and $! from last command execution.
 Terminates the command.  This subroutine is called automatically via an
 OnDestroy handler when the ExecuteCommand widget goes away.
 
+=item $exec->terse_gui;
+
+packForgets all but the minimal ROText widget.  Currently, this action
+cannot be rescinded.
+
 =back
 
 =head1 ADVERISED SUBWIDGETS
@@ -293,7 +318,15 @@ Refers to the command LabEntry widget.
 
 Refers to the command execution Button.
 
-=item Name: text, Class: Text
+=item Name: spacer, Class: Frame
+
+Refers to the spacer Frame separating the Entry and ROText widgets.
+
+=item Name: label, Class: Label
+
+Refers to the Label across the top of the ROText widget.
+
+=item Name: text, Class: ROText
 
 Refers to the ROText widget that collects command execution output.
 
@@ -319,7 +352,7 @@ exec, command, fork, asynchronous, non-blocking, widget
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999 - 2002 Stephen O. Lidie. All rights reserved.
+Copyright (C) 1999 - 2003 Stephen O. Lidie. All rights reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
