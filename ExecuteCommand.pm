@@ -1,4 +1,4 @@
-$Tk::ExecuteCommand::VERSION = '1.3';
+$Tk::ExecuteCommand::VERSION = '1.4';
 
 package Tk::ExecuteCommand;
 
