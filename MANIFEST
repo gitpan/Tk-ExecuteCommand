@@ -1,0 +1,7 @@
+MANIFEST
+Makefile.PL
+README
+ExecuteCommand.pm
+Killfam.pm
+test.pl
+executecommand.pl
