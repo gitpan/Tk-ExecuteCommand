@@ -1,4 +1,4 @@
-$Tk::ExecuteCommand::VERSION = '1.5';
+$Tk::ExecuteCommand::VERSION = '1.6';
 
 package Tk::ExecuteCommand;
 
@@ -88,12 +88,16 @@ sub _read_stdout {
 	$self->kill_command;
     } else {
 	my $h = $self->{-handle};
-	if ( sysread $h, $_, 4096 ) {
+	die "ExecuteCommand handle is udefined!\n" unless defined $h;
+	my $stat;
+	if ( $stat = sysread $h, $_, 4096 ) {
 	    my $t = $self->Subwidget('text');
 	    $t->insert('end', $_);
 	    $t->yview('end');
-	} else {
+	} elsif ( $stat == 0 ) {
 	    $self->{-finish} = 1;
+	} else {
+	    die "ExecuteCommand sysread error: $!";
 	}
     }
 	
@@ -143,6 +147,11 @@ sub execute_command {
     # Execute the command and capture stdout/stderr.
 
     my($self) = @_;
+
+    $self->{-finish} = 0;
+    $self->{-handle} = undef;
+    $self->{-pid} = undef;
+    $self->{-tid} = undef;
     
     my $h = IO::Handle->new;
     die "IO::Handle->new failed." unless defined $h;
@@ -170,6 +179,7 @@ sub execute_command {
     $self->_flash_doit(-background => $doit_bg, qw/cyan 500/);
 
     $self->waitVariable(\$self->{-finish});
+    $self->kill_command;
     
 } # end execute_command
 
@@ -193,11 +203,12 @@ sub kill_command {
     $self->{-finish} = 1;
     $self->afterCancel($self->{-tid}) if defined $self->{-tid};
     my $h = $self->{-handle};
-    return unless defined $h;
-    $self->fileevent($h, 'readable' => ''); # clear handler
-    killfam 'TERM', $self->{-pid} if defined $self->{-pid};
-    close $h;
-    $self->{-status} = [$?, $!];
+    if( defined $h ) {
+	$self->fileevent($h, 'readable' => '');
+	killfam 'TERM', $self->{-pid} if defined $self->{-pid};
+	close $h;
+	$self->{-status} = [$?, $!];
+    }
     $self->_reset_doit_button;
 
 } # end kill_command
@@ -248,6 +259,10 @@ a ROText widget that collects command execution output.
 While the command is executing, the "Do It" Button changes to a "Cancel"
 Button that can prematurely kill the executing command. The B<kill_command>
 method does the same thing programmatically.
+
+The primary benefit of this widget is the ability to execute system commands
+asynchronously without blocking Tk's event loop.  The widget doesn't even
+have to be managed (pack/grid), see the EXAMPLES section.
 
 =head1 OPTIONS
 
@@ -332,7 +347,7 @@ Refers to the ROText widget that collects command execution output.
 
 =back
 
-=head1 EXAMPLE
+=head1 EXAMPLES
 
  $ec = $mw->ExecuteCommand(
      -command    => '',
@@ -345,6 +360,88 @@ Refers to the ROText widget that collects command execution output.
  $ec->execute_command;
  $ec->bell;
  $ec->update;
+
+ =================================================================
+
+ # More complicated example to read AC temps via snmpget. The target
+ # air conditioner IPs have been changed to protect them ;)
+
+ #!/usr/local/bin/perl
+ use Tk;
+ use Tk::ExecuteCommand;
+ use subs qw/ init main read_acs sys /;
+ use strict;
+ use warnings;
+
+ # Globals.
+
+ my $ec;                                 # ExecuteCommand widget
+ my @gauges;                             # list of AC NGauge widgets
+ my $interval;                           # interval between SNMP scans, seconds
+ my $mw;                                 # MainWindow
+ my $snmp_liebert_temperature_actual;    # temperature, actual reading
+ my $snmp_liebert_temperature_tolerance; # temperature, desired tolerance
+ my $snmp_liebert_temperature_setting;   # temperature, desired setting
+ my $snmp_root;                          # snmpget/snmpset dirname
+ my $temp_tolerance_factor;              # tolerance value * factor = degrees
+
+ init;
+ main;
+
+ sub init {
+
+     $mw = MainWindow->new;
+     $ec = $mw->ExecuteCommand;
+
+     $interval = 2;
+
+     $snmp_root = '/usr/bin';
+     $snmp_liebert_temperature_setting   = '.1.3.6.1.4.1.476.1.42.3.4.1.2.1.0';
+     $snmp_liebert_temperature_tolerance = '.1.3.6.1.4.1.476.1.42.3.4.1.2.2.0';
+     $snmp_liebert_temperature_actual    = '.1.3.6.1.4.1.476.1.42.3.4.1.2.3.1.3.1';
+
+     $gauges[0] = {-ac => 'some-ip-1'};
+     $gauges[1] = {-ac => 'some-ip-2'};
+
+ } # end init
+
+ sub main {
+
+     read_acs;
+     MainLoop;
+
+ } # end main
+
+ sub read_acs {
+
+     my( $stat, @temperature, @humidity );
+
+     foreach my $g ( @gauges ) {
+	 my $ac_ip = $g->{ -ac } . '.some.domain.name';
+	
+	 ( $stat, @temperature ) = sys "$snmp_root/snmpget $ac_ip communityname  $snmp_liebert_temperature_setting $snmp_liebert_temperature_tolerance $snmp_liebert_temperature_actual";
+	 die "Cannot get temperature data for AC '$ac_ip': $stat." if $stat or $#temperature != 2;
+	 print "stat=$stat, data=@temperature.\n";
+
+     } # forend all air conditioners
+
+     $mw->after( $interval * 1000 => \&read_acs );
+
+ } # end read_acs
+
+ sub sys {
+
+     # Execute a command asynchronously and return its status and output.
+
+     my $cmd = shift;
+    
+     $ec->configure( -command => $cmd );
+     my $t = $ec->Subwidget( 'text' ); # ROText widget
+     $t->delete( '1.0' => 'end' );
+     $ec->execute_command;
+     return ($ec->get_status)[0], split /\n/, $t->get( '1.0' => 'end -1 chars' );
+
+ } # end sys
 
 =head1 KEYWORDS
 
